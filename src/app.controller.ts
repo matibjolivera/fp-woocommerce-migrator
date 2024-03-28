@@ -1,12 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service';
+import { MigrationService } from './services/migration.service';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(private readonly migrationService: MigrationService) {}
 
-  @Get()
-  getHello(): string {
-    return this.appService.getHello();
+  @Get('migrate-categories')
+  async migrateCategories() {
+    await this.migrationService.migrateCategories();
+    return 'Categorías migradas con éxito.';
   }
 }
