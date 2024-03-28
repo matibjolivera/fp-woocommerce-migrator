@@ -22,4 +22,16 @@ export class AppController {
     await this.migrationService.migrateAllAttributeTerms();
     return 'Términos de atributos migrados con éxito.';
   }
+
+  @Get('migrate-products')
+  async migrateProducts() {
+    await this.migrationService.migrateProducts();
+    return 'Productos migrados con éxito.';
+  }
+
+  @Get('migrate-products-variations')
+  async migrateProductsVariations() {
+    await this.migrationService.migrateProductsVariations();
+    return 'Variaciones migradas con éxito.';
+  }
 }

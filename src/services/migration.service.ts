@@ -16,39 +16,62 @@ export class MigrationService {
     this.destinationWooCommerceURL = process.env.DESTINATION_WC_URL;
   }
 
+  private async fetchDataFromSource(
+    url: string,
+    params: object = {},
+  ): Promise<any[]> {
+    let data = [];
+    let page = 1;
+    let totalPages = 1;
+
+    while (page <= totalPages) {
+      const response = await axios.get(url, {
+        auth: {
+          username: this.sourceWooCommerceKey,
+          password: this.sourceWooCommerceSecret,
+        },
+        params: { ...params, page },
+      });
+
+      data = data.concat(response.data);
+      totalPages = Number(response.headers['x-wp-totalpages']);
+      page++;
+    }
+
+    return data;
+  }
+
+  private async migrateData(
+    data: any[],
+    apiUrl: string,
+    logPrefix: string,
+    migrateCallback,
+  ) {
+    console.log(`Total items to migrate: ${data.length}`);
+
+    for (const item of data) {
+      try {
+        await migrateCallback(item, apiUrl);
+        console.log(`${logPrefix} migrated: ${item.name}`);
+      } catch (e) {
+        console.log(`Error migrating a ${logPrefix.toLowerCase()}:`, e);
+      }
+    }
+  }
+
   async migrateCategories() {
     try {
-      let allCategories = [];
-      let page = 1;
-      let totalPages = 1;
-
-      while (page <= totalPages) {
-        const categoriesResponse = await axios.get(
-          `${this.sourceWooCommerceURL}/wp-json/wc/v3/products/categories`,
-          {
-            auth: {
-              username: this.sourceWooCommerceKey,
-              password: this.sourceWooCommerceSecret,
-            },
-            params: {
-              page: page,
-            },
-          },
-        );
-
-        allCategories = allCategories.concat(categoriesResponse.data);
-
-        totalPages = Number(categoriesResponse.headers['x-wp-totalpages']);
-
-        page++;
-      }
-
-      console.log('Total categories to migrate:', allCategories.length);
+      const allCategories = await this.fetchDataFromSource(
+        `${this.sourceWooCommerceURL}/wp-json/wc/v3/products/categories`,
+      );
 
       const apiUrl = `${this.destinationWooCommerceURL}/wp-json/wc/v3/products/categories`;
 
-      for (const category of allCategories) {
-        try {
+      await this.migrateData(
+        allCategories,
+        apiUrl,
+        'Category',
+        async (category, apiUrl) => {
           delete category.id;
           delete category.meta_data;
 
@@ -63,12 +86,8 @@ export class MigrationService {
               'Content-Type': 'application/json',
             },
           });
-
-          console.log(`Category migrated: ${category.name}`);
-        } catch (e) {
-          console.log('Error migrating a category:', e);
-        }
-      }
+        },
+      );
     } catch (error) {
       console.error('Error during category migration:', error);
     }
@@ -76,29 +95,19 @@ export class MigrationService {
 
   async migrateAttributes() {
     try {
-      // Obtener atributos de productos del WooCommerce de origen
-      const attributesResponse = await axios.get(
+      const allAttributes = await this.fetchDataFromSource(
         `${this.sourceWooCommerceURL}/wp-json/wc/v3/products/attributes`,
-        {
-          auth: {
-            username: this.sourceWooCommerceKey,
-            password: this.sourceWooCommerceSecret,
-          },
-        },
       );
-
-      const attributes = attributesResponse.data;
-
-      console.log('Total attributes to migrate:', attributes.length);
 
       const apiUrl = `${this.destinationWooCommerceURL}/wp-json/wc/v3/products/attributes`;
 
-      for (const attribute of attributes) {
-        try {
-          // Eliminar propiedades que no son necesarias
+      await this.migrateData(
+        allAttributes,
+        apiUrl,
+        'Attribute',
+        async (attribute, apiUrl) => {
           delete attribute.id;
           delete attribute._links;
-          console.log(attribute);
 
           const authorizationHeader = this.oauthService.getAuthorizationHeader(
             apiUrl,
@@ -111,12 +120,8 @@ export class MigrationService {
               'Content-Type': 'application/json',
             },
           });
-
-          console.log(`Attribute migrated: ${attribute.name}`);
-        } catch (e) {
-          console.log('Error migrating an attribute:', e);
-        }
-      }
+        },
+      );
     } catch (error) {
       console.error('Error during attribute migration:', error);
     }
@@ -124,23 +129,13 @@ export class MigrationService {
 
   async migrateAllAttributeTerms() {
     try {
-      // Obtener atributos de productos del WooCommerce de origen
-      const attributesResponse = await axios.get(
+      const allAttributes = await this.fetchDataFromSource(
         `${this.sourceWooCommerceURL}/wp-json/wc/v3/products/attributes`,
-        {
-          auth: {
-            username: this.sourceWooCommerceKey,
-            password: this.sourceWooCommerceSecret,
-          },
-        },
       );
 
-      const attributes = attributesResponse.data;
+      console.log('Total attributes to migrate terms:', allAttributes.length);
 
-      console.log('Total attributes to migrate terms:', attributes.length);
-
-      // Iterar sobre cada atributo para obtener sus términos y migrarlos al destino
-      for (const attribute of attributes) {
+      for (const attribute of allAttributes) {
         try {
           const attributeId = attribute.id;
           await this.migrateAttributeTerms(attributeId);
@@ -158,33 +153,24 @@ export class MigrationService {
 
   async migrateAttributeTerms(attributeId: number) {
     try {
-      // Obtener términos de atributo del WooCommerce de origen
-      const termsResponse = await axios.get(
-        `${this.sourceWooCommerceURL}/wp-json/wc/v3/products/attributes/${attributeId}/terms`,
-        {
-          auth: {
-            username: this.sourceWooCommerceKey,
-            password: this.sourceWooCommerceSecret,
-          },
-        },
-      );
+      const apiUrl = `${this.destinationWooCommerceURL}/wp-json/wc/v3/products/attributes/${attributeId}/terms`;
 
-      const terms = termsResponse.data;
+      const allTerms = await this.fetchDataFromSource(
+        `${this.sourceWooCommerceURL}/wp-json/wc/v3/products/attributes/${attributeId}/terms`,
+      );
 
       console.log(
         `Total terms to migrate for attribute ID ${attributeId}:`,
-        terms.length,
+        allTerms.length,
       );
 
-      const apiUrl = `${this.destinationWooCommerceURL}/wp-json/wc/v3/products/attributes/${attributeId}/terms`;
-
-      // Iterar sobre cada término y migrarlo al destino
-      for (const term of terms) {
-        try {
-          // Eliminar propiedades que no son necesarias
+      await this.migrateData(
+        allTerms,
+        apiUrl,
+        'Attribute term',
+        async (term, apiUrl) => {
           delete term.id;
           delete term._links;
-          console.log(term);
 
           const authorizationHeader = this.oauthService.getAuthorizationHeader(
             apiUrl,
@@ -197,17 +183,79 @@ export class MigrationService {
               'Content-Type': 'application/json',
             },
           });
-
-          console.log(`Attribute term migrated: ${term.name}`);
-        } catch (e) {
-          console.log('Error migrating an attribute term:', e);
-        }
-      }
+        },
+      );
     } catch (error) {
       console.error(
         `Error during attribute term migration for attribute ID ${attributeId}:`,
         error,
       );
+    }
+  }
+
+  async migrateProducts() {
+    try {
+      // Paso 1: Obtener todos los productos del sitio de origen
+      const products = await this.fetchDataFromSource(
+        `${this.sourceWooCommerceURL}/wp-json/wc/v3/products`,
+      );
+
+      // Paso 2: Migrar cada producto al sitio de destino
+      await this.migrateData(
+        products,
+        `${this.destinationWooCommerceURL}/wp-json/wc/v3/products`,
+        'Product',
+        async (product: any, apiUrl: string) => {
+          try {
+            // Extraer las URLs de las imágenes del producto
+            const imageUrls = product.images.map((image: any) => ({
+              src: image.src,
+            }));
+
+            // Crear el objeto de producto a migrar
+            const productToMigrate = {
+              name: product.name,
+              type: product.type,
+              regular_price: product.regular_price,
+              description: product.description,
+              short_description: product.short_description,
+              images: imageUrls, // Solo las URLs de las imágenes
+            };
+
+            // Migrar el producto al sitio de destino
+            const authorizationHeader =
+              this.oauthService.getAuthorizationHeader(apiUrl, 'POST');
+            const migratedProductResponse = await axios.post(
+              apiUrl,
+              productToMigrate,
+              {
+                headers: {
+                  Authorization: authorizationHeader,
+                  'Content-Type': 'application/json',
+                },
+              },
+            );
+
+            const migratedProduct = migratedProductResponse.data;
+            console.log(`Product migrated: ${migratedProduct.name}`);
+          } catch (error) {
+            console.error('Error migrating product:', error);
+          }
+        },
+      );
+    } catch (error) {
+      console.error('Error during product migration:', error);
+    }
+  }
+
+  async migrateProductsVariations() {
+    try {
+      // 1. Obtener todas las variaciones de productos del sitio de origen
+      // 2. Iterar sobre cada variación
+      // 3. Migrar cada variación al sitio de destino
+      // 4. Manejar las asociaciones de categorías, atributos, etc.
+    } catch (error) {
+      console.error('Error during variation migration:', error);
     }
   }
 }
