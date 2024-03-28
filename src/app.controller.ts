@@ -10,4 +10,16 @@ export class AppController {
     await this.migrationService.migrateCategories();
     return 'Categorías migradas con éxito.';
   }
+
+  @Get('migrate-attributes')
+  async migrateAttributes() {
+    await this.migrationService.migrateAttributes();
+    return 'Atributos migrados con éxito.';
+  }
+
+  @Get('migrate-attributes-terms')
+  async migrateAttributesTerms() {
+    await this.migrationService.migrateAllAttributeTerms();
+    return 'Términos de atributos migrados con éxito.';
+  }
 }
